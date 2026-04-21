@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>數位看板系統 v1.0</title>
+  <style>
+    /* =============================================
+       CSS Variables & Reset
+    ============================================= */
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --border: rgba(255,255,255,0.08);
+      --accent: #00d4ff;
+      --accent2: #7b2fff;
+      --text: #e8e8f0;
+      --text-dim: #666680;
+      --danger: #ff4060;
+      --warn: #ffb020;
+      --ok: #20e070;
+      --radius: 6px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', 'Consolas', monospace;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* =============================================
+       LAUNCH SCREEN
+    ============================================= */
+    #launch-screen {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: var(--bg);
+      z-index: 9999;
+      gap: 40px;
+    }
+
+    .launch-logo {
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+    }
+
+    .launch-logo .icon {
+      width: 80px; height: 80px;
+      border: 2px solid var(--accent);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 36px;
+      box-shadow: 0 0 30px rgba(0,212,255,0.3), inset 0 0 20px rgba(0,212,255,0.05);
+      animation: pulse-border 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-border {
+      0%, 100% { box-shadow: 0 0 20px rgba(0,212,255,0.2), inset 0 0 15px rgba(0,212,255,0.03); }
+      50% { box-shadow: 0 0 50px rgba(0,212,255,0.5), inset 0 0 30px rgba(0,212,255,0.08); }
+    }
+
+    .launch-logo h1 {
+      font-size: 28px; letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+
+    .launch-logo .sub {
+      font-size: 11px; letter-spacing: 0.25em;
+      color: var(--text-dim); text-transform: uppercase;
+    }
+
+    .launch-steps {
+      display: flex; flex-direction: column; gap: 10px;
+      width: 360px;
+    }
+
+    .launch-step {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      font-size: 12px; color: var(--text-dim);
+      transition: border-color 0.3s, color 0.3s;
+    }
+
+    .launch-step.active {
+      border-color: rgba(0,212,255,0.4);
+      color: var(--text);
+    }
+
+    .launch-step.done {
+      border-color: rgba(32,224,112,0.4);
+      color: var(--ok);
+    }
+
+    .step-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--text-dim); flex-shrink: 0;
+      transition: background 0.3s;
+    }
+
+    .launch-step.active .step-dot { background: var(--accent); }
+    .launch-step.done .step-dot { background: var(--ok); }
+
+    #btn-launch {
+      padding: 16px 48px;
+      background: transparent;
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      color: var(--accent);
+      font-family: inherit; font-size: 13px;
+      letter-spacing: 0.2em; text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
+      position: relative; overflow: hidden;
+    }
+
+    #btn-launch::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(0,212,255,0.1), rgba(123,47,255,0.1));
+      opacity: 0; transition: opacity 0.2s;
+    }
+
+    #btn-launch:hover { box-shadow: 0 0 30px rgba(0,212,255,0.3); }
+    #btn-launch:hover::before { opacity: 1; }
+    #btn-launch:active { transform: scale(0.98); }
+
+    #launch-error {
+      font-size: 12px; color: var(--danger);
+      text-align: center; max-width: 360px;
+      min-height: 20px;
+    }
+
+    /* =============================================
+       LAYOUT PICKER
+    ============================================= */
+    .layout-picker {
+      display: flex; flex-direction: column; gap: 10px;
+      width: 480px;
+    }
+
+    .layout-picker-label {
+      font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--text-dim); margin-bottom: 2px;
+    }
+
+    .layout-groups {
+      display: flex; gap: 10px;
+    }
+
+    .layout-group {
+      display: flex; flex-direction: column; gap: 6px; flex: 1;
+    }
+
+    .layout-group-title {
+      font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--text-dim); text-align: center;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .layout-btn {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      color: var(--text-dim); font-family: inherit;
+      font-size: 11px; letter-spacing: 0.05em;
+      text-align: left;
+    }
+
+    .layout-btn:hover {
+      border-color: rgba(0,212,255,0.35);
+      color: var(--text);
+      background: rgba(0,212,255,0.04);
+    }
+
+    .layout-btn.selected {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(0,212,255,0.08);
+      box-shadow: 0 0 12px rgba(0,212,255,0.15);
+    }
+
+    /* Mini layout preview icons */
+    .layout-preview {
+      width: 36px; height: 24px; flex-shrink: 0;
+      display: grid; gap: 2px;
+      border: 1px solid currentColor; border-radius: 2px;
+      padding: 2px; opacity: 0.7;
+    }
+
+    .layout-preview .lp-cell {
+      background: currentColor; border-radius: 1px; opacity: 0.5;
+    }
+
+    /* Vertical layouts: columns side by side */
+    .lp-v1 { grid-template-columns: 1fr; }
+    .lp-v2 { grid-template-columns: 1fr 1fr; }
+    .lp-v3 { grid-template-columns: 1fr 1fr 1fr; }
+
+    /* Horizontal layouts: rows stacked */
+    .lp-h1 { grid-template-rows: 1fr; }
+    .lp-h2 { grid-template-rows: 1fr 1fr; }
+    .lp-h3 { grid-template-rows: 1fr 1fr 1fr; }
+
+    /* Slot divider line style based on layout type */
+    .slot-divider-h { border-top: 1px solid rgba(255,255,255,0.04) !important;
+                      border-left: none !important; }
+
+    /* =============================================
+       MAIN SIGNAGE LAYOUT
+    ============================================= */
+    #signage {
+      width: 100%; height: 100%;
+      display: none;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* Grid container for media slots */
+    #grid-container {
+      flex: 1;
+      display: grid;
+      /* Default: 3 equal columns — overridden by config */
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    /* Each slot */
+    .slot {
+      position: relative;
+      overflow: hidden;
+      background: #000;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .slot + .slot {
+      border-left: 1px solid rgba(255,255,255,0.04);
+    }
+
+    /* Media elements inside slots */
+    .slot img, .slot video {
+      max-width: 100%; max-height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    /* Oversized warning badge */
+    .oversize-badge {
+      position: absolute; bottom: 8px; right: 8px;
+      background: rgba(255,176,32,0.9);
+      color: #000; font-size: 10px; font-weight: bold;
+      padding: 3px 8px; border-radius: 3px;
+      letter-spacing: 0.1em;
+      pointer-events: none;
+      display: none;
+    }
+
+    /* Slot loading / error state */
+    .slot-msg {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px; color: var(--text-dim); font-size: 12px;
+      letter-spacing: 0.1em;
+    }
+
+    .slot-msg .icon { font-size: 32px; opacity: 0.3; }
+
+    /* =============================================
+       OVERLAY LAYER (Marquee + Clock)
+    ============================================= */
+    #overlay {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    /* Clock */
+    #clock {
+      position: absolute;
+      right: 24px;
+      font-variant-numeric: tabular-nums;
+      font-size: 30px;
+      color: yellow;
+      top: 5vh;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.8);
+      letter-spacing: 0.05em;
+    }
+
+    /* Marquee wrapper */
+    #marquee-wrapper {
+      position: absolute;
+      left: 0; right: 0;
+      top: 90vh;
+      height: 50px;
+      overflow: hidden;
+      background: rgba(0,0,0,0.55);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex; align-items: center;
+    }
+
+    #marquee-track {
+      display: inline-flex; align-items: center;
+      white-space: nowrap;
+      will-change: transform;
+      animation: marquee-scroll 30s linear infinite;
+      font-size: 40px;
+      color: white;
+      padding-left: 100%;
+    }
+
+    @keyframes marquee-scroll {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-100%); }
+    }
+
+    /* =============================================
+       STATUS BAR (bottom debug strip)
+    ============================================= */
+    #status-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      height: 24px;
+      background: rgba(0,0,0,0.75);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center;
+      padding: 0 12px; gap: 20px;
+      z-index: 1001; pointer-events: none;
+    }
+
+    .status-item {
+      font-size: 10px; color: var(--text-dim);
+      letter-spacing: 0.08em;
+    }
+
+    .status-dot {
+      display: inline-block; width: 6px; height: 6px;
+      border-radius: 50%; margin-right: 5px;
+      background: var(--ok);
+    }
+
+    .status-dot.warn { background: var(--warn); }
+    .status-dot.err  { background: var(--danger); }
+
+    /* =============================================
+       Program change transition
+    ============================================= */
+    #transition-overlay {
+      position: fixed; inset: 0;
+      background: #000; opacity: 0;
+      z-index: 500; pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+
+    #transition-overlay.active { opacity: 1; }
+
+    /* =============================================
+       Media fade-in
+    ============================================= */
+    @keyframes media-fade {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    .slot img, .slot video {
+      animation: media-fade 0.4s ease;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ===================== LAUNCH SCREEN ===================== -->
+<div id="launch-screen">
+  <div class="launch-logo">
+    <div class="icon">📺</div>
+    <h1>數位看板</h1>
+    <div class="sub">Digital Signage System &nbsp;·&nbsp; v1.0</div>
+  </div>
+
+  <!-- Layout Picker -->
+  <div class="layout-picker">
+    <div class="layout-picker-label">選擇版面佈局（可被 program.json 覆蓋）</div>
+    <div class="layout-groups">
+
+      <!-- Vertical group -->
+      <div class="layout-group">
+        <div class="layout-group-title">⬌ 垂直分割 (Vertical)</div>
+        <button class="layout-btn" data-layout="v1">
+          <div class="layout-preview lp-v1"><div class="lp-cell"></div></div>
+          全版
+        </button>
+        <button class="layout-btn" data-layout="v2">
+          <div class="layout-preview lp-v2"><div class="lp-cell"></div><div class="lp-cell"></div></div>
+          左右 2 等分
+        </button>
+        <button class="layout-btn selected" data-layout="v3">
+          <div class="layout-preview lp-v3"><div class="lp-cell"></div><div class="lp-cell"></div><div class="lp-cell"></div></div>
+          左中右 3 等分
+        </button>
+      </div>
+
+      <!-- Horizontal group -->
+      <div class="layout-group">
+        <div class="layout-group-title">⬍ 水平分割 (Horizontal)</div>
+        <button class="layout-btn" data-layout="h1">
+          <div class="layout-preview lp-h1"><div class="lp-cell"></div></div>
+          全版
+        </button>
+        <button class="layout-btn" data-layout="h2">
+          <div class="layout-preview lp-h2"><div class="lp-cell"></div><div class="lp-cell"></div></div>
+          上下 2 等分
+        </button>
+        <button class="layout-btn" data-layout="h3">
+          <div class="layout-preview lp-h3"><div class="lp-cell"></div><div class="lp-cell"></div><div class="lp-cell"></div></div>
+          上中下 3 等分
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="launch-steps">
+    <div class="launch-step" id="step-dir">
+      <div class="step-dot"></div>
+      <span>選取本地資源資料夾 (program.json + 媒體檔案)</span>
+    </div>
+    <div class="launch-step" id="step-json">
+      <div class="step-dot"></div>
+      <span>讀取並驗證 program.json 設定</span>
+    </div>
+    <div class="launch-step" id="step-play">
+      <div class="step-dot"></div>
+      <span>啟動播放並進入全螢幕</span>
+    </div>
+  </div>
+
+  <button id="btn-launch">▶&nbsp; 選擇資料夾並啟動</button>
+  <div id="launch-error"></div>
+</div>
+
+<!-- ===================== MAIN SIGNAGE ===================== -->
+<div id="signage">
+
+  <!-- Grid slots injected by JS -->
+  <div id="grid-container"></div>
+
+  <!-- Overlay: clock + marquee -->
+  <div id="overlay">
+    <div id="clock">--:--:--</div>
+    <div id="marquee-wrapper">
+      <div id="marquee-track">載入設定中...</div>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div id="status-bar">
+    <span class="status-item"><span class="status-dot" id="dot-run"></span><span id="status-program">–</span></span>
+    <span class="status-item" id="status-time-range">–</span>
+    <span class="status-item" id="status-layout">Layout: –</span>
+    <span class="status-item" id="status-poll">Polling: –</span>
+    <span class="status-item" id="status-mem">–</span>
+  </div>
+</div>
+
+<!-- Transition overlay -->
+<div id="transition-overlay"></div>
+
+
+<script>
+/* ==========================================================
+   DIGITAL SIGNAGE SYSTEM — main.js (embedded)
+   Phases 1-3 fully implemented
+========================================================== */
+
+// ── Globals ──────────────────────────────────────────────
+let dirHandle      = null;   // FileSystemDirectoryHandle
+let config         = null;   // Parsed program.json
+let configLastMod  = null;   // Last-modified timestamp string
+let activeProgram  = null;   // Currently running schedule object
+let slotManagers   = [];     // Array of SlotManager instances
+let pollInterval   = null;   // setInterval handle for config polling
+let clockInterval  = null;   // setInterval handle for clock
+let uiLayout       = 'v3';   // Layout chosen in launch screen UI
+
+// Layout preset definitions
+// Each preset: { type: 'v'|'h', slots: number, gridCols, gridRows, dividerClass }
+const LAYOUT_PRESETS = {
+  v1: { label: '垂直全版',     type: 'v', slots: 1, cols: 1, rows: 1 },
+  v2: { label: '垂直 2 等分',  type: 'v', slots: 2, cols: 2, rows: 1 },
+  v3: { label: '垂直 3 等分',  type: 'v', slots: 3, cols: 3, rows: 1 },
+  h1: { label: '水平全版',     type: 'h', slots: 1, cols: 1, rows: 1 },
+  h2: { label: '水平 2 等分',  type: 'h', slots: 1, cols: 1, rows: 2 },
+  h3: { label: '水平 3 等分',  type: 'h', slots: 1, cols: 1, rows: 3 },
+};
+
+const POLL_MS = 60_000;      // 60-second polling
+
+// ── DOM refs ──────────────────────────────────────────────
+const launchScreen   = document.getElementById('launch-screen');
+const signageEl      = document.getElementById('signage');
+const gridContainer  = document.getElementById('grid-container');
+const clockEl        = document.getElementById('clock');
+const marqueeTrack   = document.getElementById('marquee-track');
+const marqueeWrapper = document.getElementById('marquee-wrapper');
+const transOverlay   = document.getElementById('transition-overlay');
+const statusProgram  = document.getElementById('status-program');
+const statusTimeRange= document.getElementById('status-time-range');
+const statusPoll     = document.getElementById('status-poll');
+const statusMem      = document.getElementById('status-mem');
+const statusLayout   = document.getElementById('status-layout');
+const dotRun         = document.getElementById('dot-run');
+const launchError    = document.getElementById('launch-error');
+
+// ── Layout Picker ─────────────────────────────────────────
+document.querySelectorAll('.layout-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.layout-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    uiLayout = btn.dataset.layout;
+  });
+});
+
+// ── Steps UI ─────────────────────────────────────────────
+function setStep(id, state) {
+  const el = document.getElementById(id);
+  el.classList.remove('active', 'done');
+  if (state) el.classList.add(state);
+}
+
+// ── Launch Button ─────────────────────────────────────────
+document.getElementById('btn-launch').addEventListener('click', async () => {
+  launchError.textContent = '';
+  try {
+    // 1. Pick directory
+    setStep('step-dir', 'active');
+    dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+    setStep('step-dir', 'done');
+
+    // 2. Load & validate config
+    setStep('step-json', 'active');
+    config = await loadConfig();
+    setStep('step-json', 'done');
+
+    // 3. Launch fullscreen + signage
+    setStep('step-play', 'active');
+    await startSignage();
+    setStep('step-play', 'done');
+
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      launchError.textContent = '已取消選取資料夾。';
+    } else {
+      launchError.textContent = `錯誤：${err.message}`;
+      console.error(err);
+      // Reset steps
+      ['step-dir','step-json','step-play'].forEach(s => setStep(s, null));
+    }
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+//  CONFIG LOADER
+// ══════════════════════════════════════════════════════════
+async function loadConfig() {
+  const fileHandle = await dirHandle.getFileHandle('program.json');
+  const file       = await fileHandle.getFile();
+  configLastMod    = file.lastModified;
+  const text       = await file.text();
+  const obj        = JSON.parse(text);
+  validateConfig(obj);
+  return obj;
+}
+
+function validateConfig(obj) {
+  if (!obj.schedules || !Array.isArray(obj.schedules)) {
+    throw new Error('program.json 缺少 schedules 陣列');
+  }
+  for (const s of obj.schedules) {
+    if (!s.programId)  throw new Error(`排程缺少 programId`);
+    if (!s.slots || !Array.isArray(s.slots)) throw new Error(`${s.programId} 缺少 slots`);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  SIGNAGE START
+// ══════════════════════════════════════════════════════════
+async function startSignage() {
+  // Fullscreen
+  try {
+    await document.documentElement.requestFullscreen();
+  } catch(e) {
+    console.warn('Fullscreen denied, continuing without it.', e);
+  }
+
+  // Show signage, hide launch
+  launchScreen.style.display = 'none';
+  signageEl.style.display    = 'flex';
+
+  // Apply global overlay styles
+  applyOverlayStyles();
+
+  // Clock ticker
+  updateClock();
+  clockInterval = setInterval(updateClock, 1000);
+
+  // Initial schedule evaluation
+  await evaluateSchedule();
+
+  // Start polling
+  pollInterval = setInterval(pollConfig, POLL_MS);
+  updateStatusPoll('idle');
+}
+
+// ══════════════════════════════════════════════════════════
+//  SCHEDULE EVALUATOR
+// ══════════════════════════════════════════════════════════
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+async function evaluateSchedule() {
+  const now     = new Date();
+  const dayName = DAY_NAMES[now.getDay()];
+  const hhmm    = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+  let matched = null;
+  for (const sched of config.schedules) {
+    if (sched.days && !sched.days.includes(dayName)) continue;
+    if (sched.startTime && hhmm < sched.startTime) continue;
+    if (sched.endTime   && hhmm >= sched.endTime)  continue;
+    matched = sched;
+    break;
+  }
+
+  if (!matched) {
+    // No active program — show standby
+    showStandby();
+    return;
+  }
+
+  // Same program still active? Skip reload
+  if (activeProgram && activeProgram.programId === matched.programId) return;
+
+  // Switch program
+  await switchProgram(matched);
+}
+
+async function switchProgram(sched) {
+  // Fade out
+  transOverlay.classList.add('active');
+  await sleep(420);
+
+  // Destroy old managers
+  destroyAllSlots();
+
+  activeProgram = sched;
+
+  // Build grid — determines how many cells exist
+  buildGrid(sched.slots);
+
+  // Count actual rendered slot cells
+  const renderedSlots = gridContainer.querySelectorAll('.slot').length;
+
+  // Build managers & start playback — one per rendered cell
+  for (let i = 0; i < renderedSlots; i++) {
+    // Cycle through defined slots if fewer than rendered cells
+    const slotCfg = sched.slots[i % sched.slots.length];
+    const mgr = new SlotManager(slotCfg, i);
+    slotManagers.push(mgr);
+    await mgr.start();
+  }
+
+  // Update status bar
+  statusProgram.textContent   = sched.programId;
+  statusTimeRange.textContent = `${sched.startTime || '–'} ~ ${sched.endTime || '–'}`;
+  dotRun.className = 'status-dot';
+
+  // Update marquee text
+  if (sched.marquee) {
+    marqueeTrack.textContent = sched.marquee;
+  } else if (config.styles?.marquee?.text) {
+    marqueeTrack.textContent = config.styles.marquee.text;
+  }
+
+  // Fade in
+  transOverlay.classList.remove('active');
+}
+
+function showStandby() {
+  destroyAllSlots();
+  activeProgram = null;
+  gridContainer.innerHTML = `
+    <div class="slot" style="grid-column:1/-1">
+      <div class="slot-msg">
+        <div class="icon">🕐</div>
+        <div>目前時段無排程</div>
+        <div style="color:#444;font-size:10px;margin-top:6px;">等待下一個排程...</div>
+      </div>
+    </div>`;
+  statusProgram.textContent   = '待機中';
+  dotRun.className = 'status-dot warn';
+}
+
+// ══════════════════════════════════════════════════════════
+//  GRID BUILDER  —  supports v1/v2/v3/h1/h2/h3 presets
+// ══════════════════════════════════════════════════════════
+function resolveLayout(slots) {
+  // Priority: per-schedule layout > config.layout.preset > UI selection
+  const presetKey =
+    activeProgram?.layout?.preset ||
+    config?.layout?.preset ||
+    uiLayout ||
+    'v3';
+
+  const preset = LAYOUT_PRESETS[presetKey] || LAYOUT_PRESETS['v3'];
+
+  // Allow explicit column/row overrides in config
+  const cols = config?.layout?.columns || preset.cols;
+  const rows = config?.layout?.rows    || preset.rows;
+
+  return { preset, presetKey, cols, rows };
+}
+
+function buildGrid(slots) {
+  const { preset, presetKey, cols, rows } = resolveLayout(slots);
+  const isHorizontal = preset.type === 'h';
+
+  // Apply grid template
+  gridContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  gridContainer.style.gridTemplateRows    = rows > 1 ? `repeat(${rows}, 1fr)` : '';
+
+  gridContainer.innerHTML = '';
+
+  // For horizontal multi-split, we may have fewer slots defined than grid cells
+  // Fill up to grid cell count with the defined slots (cycling if needed)
+  const cellCount = cols * rows;
+
+  for (let i = 0; i < Math.max(slots.length, isHorizontal ? rows : cols); i++) {
+    const slotCfg = slots[i] || slots[slots.length - 1]; // fallback to last slot
+    const div = document.createElement('div');
+    div.classList.add('slot');
+    div.id = `slot-${i}`;
+
+    // Add appropriate divider styling
+    if (isHorizontal && i > 0) div.classList.add('slot-divider-h');
+
+    if (slotCfg?.gridArea) div.style.gridArea = slotCfg.gridArea;
+    div.innerHTML = `<div class="slot-msg"><div class="icon">⏳</div><div>載入中...</div></div>
+                     <div class="oversize-badge">⚠ 超出尺寸</div>`;
+    gridContainer.appendChild(div);
+  }
+
+  // Update status bar
+  const presetLabels = {
+    v1:'垂直全版', v2:'垂直2等分', v3:'垂直3等分',
+    h1:'水平全版', h2:'水平2等分', h3:'水平3等分'
+  };
+  statusLayout.textContent = `Layout: ${presetLabels[presetKey] || presetKey}`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  SLOT MANAGER
+// ══════════════════════════════════════════════════════════
+class SlotManager {
+  constructor(slotConfig, index) {
+    this.config   = slotConfig;
+    this.index    = index;
+    this.files    = slotConfig.files || [];
+    this.duration = slotConfig.duration || 5000;
+    this.cursor   = 0;
+    this.timer    = null;
+    this.blobUrls = [];  // Track for revoke
+    this.el       = document.getElementById(`slot-${index}`);
+  }
+
+  async start() {
+    if (!this.files.length) {
+      this.el.querySelector('.slot-msg').innerHTML = '<div class="icon">📭</div><div>無媒體檔案</div>';
+      return;
+    }
+    await this.showCurrent();
+    this.scheduleNext();
+  }
+
+  async showCurrent() {
+    const filename = this.files[this.cursor];
+    const ext      = filename.split('.').pop().toLowerCase();
+    const isVideo  = ['mp4','webm','ogg'].includes(ext);
+
+    let fileHandle, file, blobUrl;
+    try {
+      fileHandle = await dirHandle.getFileHandle(filename);
+      file       = await fileHandle.getFile();
+      blobUrl    = URL.createObjectURL(file);
+      this.blobUrls.push(blobUrl);
+    } catch (e) {
+      console.error(`無法讀取檔案: ${filename}`, e);
+      this.advanceCursor();
+      return;
+    }
+
+    // Clear previous media
+    const prev = this.el.querySelector('img, video');
+    if (prev) {
+      prev.remove();
+      // Revoke old URLs (keep last 2 for safety)
+      while (this.blobUrls.length > 4) {
+        URL.revokeObjectURL(this.blobUrls.shift());
+      }
+    }
+    // Clear loading message
+    const msg = this.el.querySelector('.slot-msg');
+    if (msg) msg.style.display = 'none';
+
+    if (isVideo) {
+      const vid       = document.createElement('video');
+      vid.src         = blobUrl;
+      vid.muted       = true;
+      vid.autoplay    = true;
+      vid.loop        = true;
+      vid.playsInline = true;
+      vid.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+      this.el.appendChild(vid);
+      vid.play().catch(() => {});
+      this.checkOversize(vid.videoWidth || 0, vid.videoHeight || 0);
+    } else {
+      const img   = document.createElement('img');
+      img.src     = blobUrl;
+      img.alt     = filename;
+      img.onload  = () => this.checkOversize(img.naturalWidth, img.naturalHeight);
+      img.onerror = () => { img.remove(); };
+      this.el.appendChild(img);
+    }
+  }
+
+  checkOversize(w, h) {
+    const badge = this.el.querySelector('.oversize-badge');
+    if (!badge) return;
+    const cw = this.el.clientWidth;
+    const ch = this.el.clientHeight;
+    badge.style.display = (w > cw || h > ch) ? 'block' : 'none';
+  }
+
+  scheduleNext() {
+    this.timer = setTimeout(async () => {
+      this.advanceCursor();
+      try { await this.showCurrent(); } catch(e) { console.error(e); }
+      this.scheduleNext();
+    }, this.duration);
+  }
+
+  advanceCursor() {
+    this.cursor = (this.cursor + 1) % Math.max(this.files.length, 1);
+  }
+
+  destroy() {
+    clearTimeout(this.timer);
+    this.blobUrls.forEach(u => URL.revokeObjectURL(u));
+    this.blobUrls = [];
+  }
+}
+
+function destroyAllSlots() {
+  slotManagers.forEach(m => m.destroy());
+  slotManagers = [];
+  gridContainer.innerHTML = '';
+}
+
+// ══════════════════════════════════════════════════════════
+//  CONFIG POLLING
+// ══════════════════════════════════════════════════════════
+async function pollConfig() {
+  updateStatusPoll('checking');
+  try {
+    const fh   = await dirHandle.getFileHandle('program.json');
+    const file = await fh.getFile();
+
+    if (file.lastModified !== configLastMod) {
+      console.log('[Polling] Config changed — reloading...');
+      config        = await loadConfig();
+      configLastMod = file.lastModified;
+      activeProgram = null;  // Force re-evaluation
+      await evaluateSchedule();
+      applyOverlayStyles();
+      updateStatusPoll('reloaded');
+    } else {
+      // Still check if schedule window changed
+      await evaluateSchedule();
+      updateStatusPoll('idle');
+    }
+  } catch(e) {
+    console.error('[Polling] Error:', e);
+    updateStatusPoll('error');
+  }
+}
+
+function updateStatusPoll(state) {
+  const ts = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+  const labels = { idle: `✓ ${ts}`, checking: `⟳ 檢查中`, reloaded: `↺ 已重載 ${ts}`, error: `✗ 錯誤` };
+  statusPoll.textContent = `Polling: ${labels[state] || state}`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  OVERLAY STYLES
+// ══════════════════════════════════════════════════════════
+function applyOverlayStyles() {
+  if (!config?.styles) return;
+
+  const marqueeStyle = config.styles.marquee || {};
+  const clockStyle   = config.styles.clock   || {};
+
+  // Clock
+  if (clockStyle.fontSize)  clockEl.style.fontSize  = clockStyle.fontSize;
+  if (clockStyle.color)     clockEl.style.color      = clockStyle.color;
+  if (clockStyle.top)       clockEl.style.top        = clockStyle.top;
+  if (clockStyle.right)     clockEl.style.right      = clockStyle.right;
+
+  // Marquee wrapper
+  if (marqueeStyle.top)     marqueeWrapper.style.top    = marqueeStyle.top;
+  if (marqueeStyle.height)  marqueeWrapper.style.height = marqueeStyle.height;
+  if (marqueeStyle.background) marqueeWrapper.style.background = marqueeStyle.background;
+
+  // Marquee text
+  if (marqueeStyle.fontSize) marqueeTrack.style.fontSize = marqueeStyle.fontSize;
+  if (marqueeStyle.color)    marqueeTrack.style.color    = marqueeStyle.color;
+  if (marqueeStyle.text)     marqueeTrack.textContent    = marqueeStyle.text;
+
+  // Speed: allow custom duration on animation
+  if (marqueeStyle.speed) {
+    marqueeTrack.style.animationDuration = marqueeStyle.speed;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  CLOCK
+// ══════════════════════════════════════════════════════════
+function updateClock() {
+  const now = new Date();
+  clockEl.textContent = now.toLocaleTimeString('zh-TW', {
+    hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+
+  // Update memory display periodically
+  if (performance?.memory) {
+    const mb = Math.round(performance.memory.usedJSHeapSize / 1048576);
+    statusMem.textContent = `Mem: ${mb} MB`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  UTILITIES
+// ══════════════════════════════════════════════════════════
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// Re-evaluate schedule every minute (catches time-window changes)
+setInterval(() => {
+  if (activeProgram !== null || config !== null) {
+    evaluateSchedule().catch(console.error);
+  }
+}, 30_000);
+
+// Prevent accidental window unload
+window.addEventListener('beforeunload', e => {
+  if (config) { e.preventDefault(); e.returnValue = ''; }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,296 @@
+# 📺 本地端數位看板系統
+**Local Digital Signage System** · v1.0
+
+純前端、零依賴、無需伺服器，完全在瀏覽器中運行的數位看板解決方案。只需一個 `index.html` 與一個 `program.json`，即可在任何支援的瀏覽器上部署成全螢幕數位看板。
+
+---
+
+## ✨ 功能特色
+
+- **多媒體播放**：支援圖片（JPG、PNG、WebP）與影片（MP4、WebM），影片自動靜音並循環播放。
+- **彈性版面佈局**：啟動時可視覺化選擇垂直/水平的全版、2 等分、3 等分，也可由 `program.json` 覆蓋。
+- **排程系統**：根據星期與時間自動切換不同 Program，支援每日多時段設定。
+- **跑馬燈字幕**：置頂層顯示，可自訂字型大小、顏色、位置與捲動速度。
+- **即時時鐘**：常駐顯示，樣式完全可自訂。
+- **自動熱重載**：每 60 秒輪詢 `program.json`，檔案變更時自動套用，無需重啟。
+- **超出尺寸提示**：媒體素材超過格子容器時自動顯示警示徽章。
+- **記憶體管理**：自動釋放 Blob URL，適合 24 小時長期不間斷運行。
+
+---
+
+## 🌐 適用瀏覽器
+
+本系統使用 **File System Access API**，僅限 Chromium 核心的桌面版瀏覽器。
+
+| 瀏覽器 | 支援狀況 | 建議版本 |
+|---|---|---|
+| Google Chrome | ✅ 完整支援 | 86 以上 |
+| Microsoft Edge | ✅ 完整支援 | 86 以上 |
+| Chromium | ✅ 完整支援 | 86 以上 |
+| Brave | ✅ 完整支援 | 近期版本 |
+| Firefox | ❌ 不支援 | — |
+| Safari | ❌ 不支援 | — |
+| 行動裝置瀏覽器 | ❌ 不支援 | — |
+
+> **建議使用 Google Chrome 或 Microsoft Edge**，並關閉瀏覽器的省電模式與自動休眠，確保看板機持續全天運行。
+
+---
+
+## 🚀 快速開始
+
+1. 建立一個資料夾，將以下檔案放入同一層：
+   ```
+   my-signage/
+   ├── index.html        ← 主程式
+   ├── program.json      ← 排程設定
+   ├── pic1.jpg
+   ├── pic2.png
+   ├── vid1.mp4
+   └── ...（其他媒體檔案）
+   ```
+
+2. 用 Chrome 或 Edge 開啟 `index.html`。
+
+3. 在啟動畫面選擇版面佈局，點擊「選擇資料夾並啟動」，選取該資料夾。
+
+4. 瀏覽器進入全螢幕並開始播放。
+
+---
+
+## 📐 版面佈局說明
+
+啟動時可從 6 種預設佈局中選擇，也可在 `program.json` 中透過 `preset` 欄位指定。
+
+| Preset 值 | 說明 | 分割方向 | 格數 |
+|---|---|---|---|
+| `v1` | 垂直全版 | 水平並排 | 1 |
+| `v2` | 左右 2 等分 | 水平並排 | 2 |
+| `v3` | 左中右 3 等分 | 水平並排 | 3 |
+| `h1` | 水平全版 | 垂直堆疊 | 1 |
+| `h2` | 上下 2 等分 | 垂直堆疊 | 2 |
+| `h3` | 上中下 3 等分 | 垂直堆疊 | 3 |
+
+**優先順序（高者覆蓋低者）：**
+
+```
+排程個別設定 (schedule.layout.preset)
+    > 全域設定 (config.layout.preset)
+        > 啟動畫面 UI 選擇
+```
+
+---
+
+## 📄 program.json 完整說明
+
+### 頂層結構
+
+```json
+{
+  "version": "1.0",
+  "layout": { ... },
+  "styles": { ... },
+  "schedules": [ ... ]
+}
+```
+
+| 欄位 | 類型 | 必填 | 說明 |
+|---|---|---|---|
+| `version` | string | 否 | 版本標記，目前為 `"1.0"` |
+| `layout` | object | 否 | 全域版面設定，可被排程個別覆蓋 |
+| `styles` | object | 否 | 跑馬燈與時鐘的全域樣式 |
+| `schedules` | array | **是** | 排程陣列，至少需一筆 |
+
+---
+
+### `layout` 物件
+
+```json
+"layout": {
+  "preset": "v3",
+  "columns": 3,
+  "rows": 1
+}
+```
+
+| 欄位 | 類型 | 說明 |
+|---|---|---|
+| `preset` | string | 佈局預設值，可選 `v1` `v2` `v3` `h1` `h2` `h3` |
+| `columns` | number | 手動指定欄數（會覆蓋 preset 的欄數） |
+| `rows` | number | 手動指定列數（會覆蓋 preset 的列數） |
+
+---
+
+### `styles` 物件
+
+#### `styles.marquee`（跑馬燈）
+
+```json
+"marquee": {
+  "text": "顯示的跑馬燈文字內容",
+  "fontSize": "36px",
+  "color": "white",
+  "top": "90vh",
+  "height": "55px",
+  "speed": "35s"
+}
+```
+
+| 欄位 | 類型 | 預設值 | 說明 |
+|---|---|---|---|
+| `text` | string | — | 全域跑馬燈文字（可被排程的 `marquee` 欄位覆蓋） |
+| `fontSize` | string | `"40px"` | 字型大小，接受任何 CSS 長度單位 |
+| `color` | string | `"white"` | 文字顏色，接受 CSS 顏色值 |
+| `top` | string | `"90vh"` | 跑馬燈距畫面頂端的距離 |
+| `height` | string | `"50px"` | 跑馬燈區塊高度 |
+| `speed` | string | `"30s"` | 完整捲動一次所需秒數，數字越大越慢 |
+| `background` | string | `"rgba(0,0,0,0.55)"` | 跑馬燈背景色 |
+
+#### `styles.clock`（時鐘）
+
+```json
+"clock": {
+  "fontSize": "28px",
+  "color": "#ffdd00",
+  "top": "16px",
+  "right": "24px"
+}
+```
+
+| 欄位 | 類型 | 預設值 | 說明 |
+|---|---|---|---|
+| `fontSize` | string | `"30px"` | 時鐘字型大小 |
+| `color` | string | `"yellow"` | 時鐘文字顏色 |
+| `top` | string | `"5vh"` | 距畫面頂端距離 |
+| `right` | string | `"24px"` | 距畫面右側距離 |
+
+---
+
+### `schedules` 陣列
+
+每筆排程物件結構如下：
+
+```json
+{
+  "programId": "morning-loop",
+  "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+  "startTime": "08:00",
+  "endTime": "12:00",
+  "layout": { "preset": "v3" },
+  "marquee": "此時段專屬的跑馬燈文字",
+  "slots": [ ... ]
+}
+```
+
+| 欄位 | 類型 | 必填 | 說明 |
+|---|---|---|---|
+| `programId` | string | **是** | 排程唯一識別名稱，顯示於底部狀態列 |
+| `days` | array | 否 | 適用星期，省略則每天生效。接受 `"Monday"` `"Tuesday"` `"Wednesday"` `"Thursday"` `"Friday"` `"Saturday"` `"Sunday"` |
+| `startTime` | string | 否 | 開始時間，格式 `"HH:MM"`（24 小時制） |
+| `endTime` | string | 否 | 結束時間，格式 `"HH:MM"`（24 小時制） |
+| `layout` | object | 否 | 此排程專屬的版面設定，格式同全域 `layout` |
+| `marquee` | string | 否 | 此排程專屬跑馬燈文字，會覆蓋 `styles.marquee.text` |
+| `slots` | array | **是** | 媒體格槽陣列 |
+
+> 系統依排程陣列順序由上往下比對，**第一個符合當前時間與星期的排程**會被套用。
+
+---
+
+### `slots` 陣列（排程內）
+
+```json
+"slots": [
+  {
+    "id": "slot1",
+    "duration": 5000,
+    "files": ["pic1.jpg", "vid1.mp4", "pic2.png"]
+  }
+]
+```
+
+| 欄位 | 類型 | 必填 | 說明 |
+|---|---|---|---|
+| `id` | string | 否 | 格槽識別名稱（供辨識用） |
+| `duration` | number | 否 | 每張圖片的顯示時間（毫秒）。預設 `5000`（5 秒）。影片會播完整個 loop 後再計時 |
+| `files` | array | **是** | 媒體檔案名稱陣列，依序輪播。路徑相對於選取的資料夾根目錄 |
+| `gridArea` | string | 否 | CSS Grid Area 字串，用於自訂格槽位置（進階用法） |
+
+**支援的媒體格式：**
+
+| 類型 | 格式 |
+|---|---|
+| 圖片 | `.jpg` `.jpeg` `.png` `.webp` `.gif` |
+| 影片 | `.mp4` `.webm` `.ogg` |
+
+> Slot 數量若少於版面格數，系統會自動循環補足（如版面 3 格但只定義 1 個 slot，則 3 格均播放同一 slot 的內容）。
+
+---
+
+## ⚠️ 注意事項
+
+### 檔案權限
+瀏覽器每次重新開啟後需重新選取資料夾，這是 File System Access API 的安全限制，無法繞過。部分 Chromium-based 瀏覽器（如 Chrome）在重新整理頁面後可能保留本次工作階段的資料夾權限，無需重新選取。
+
+### 自動熱重載
+系統每 **60 秒**檢查一次 `program.json` 的最後修改時間。若有變更，會自動重新載入設定並以淡入淡出效果切換。修改 `program.json` 後無需手動重啟。
+
+### 影片播放
+所有影片強制靜音（`muted`）並自動循環播放，這是瀏覽器 Autoplay Policy 的要求。影片的 `duration` 欄位設定的是每次輪到此影片後，播放多久才跳下一個檔案（而非影片本身長度）。
+
+### 超出尺寸提示
+媒體素材的原始尺寸超過格槽容器時，畫面右下角會出現橘色的「⚠ 超出尺寸」徽章，提醒製作者調整素材尺寸。媒體仍會正常顯示（`object-fit: contain`），不會被裁切。
+
+### 長時間運行
+建議進行以下設定確保 24 小時穩定運行：
+- 關閉作業系統的螢幕休眠與省電模式
+- 關閉瀏覽器的「記憶體節省程式」（Chrome 設定 → 效能）
+- 關閉瀏覽器的自動更新重啟提示
+- 定期（每週）手動重整頁面以釋放記憶體（或排程工作排程器自動重啟）
+
+### 字型支援
+系統預設使用等寬字型（Courier New / Consolas）。若需要特定中文字型，將字型檔放入資料夾並在 `index.html` 中以 `@font-face` 引入，確保看板機離線也能正確顯示。
+
+### 瀏覽器全螢幕
+部分環境可能因瀏覽器安全政策拒絕自動全螢幕（非使用者手勢觸發），此時系統會在非全螢幕狀態下繼續播放。可手動按 `F11` 進入全螢幕模式。
+
+---
+
+## 📁 建議資料夾結構
+
+```
+signage-content/
+├── index.html            ← 主程式（唯一的 HTML 檔）
+├── program.json          ← 排程設定檔
+├── fonts/                ← 自訂字型（選用）
+│   └── custom-font.woff2
+└── media/                ← 媒體素材
+    ├── morning_01.jpg
+    ├── morning_02.png
+    ├── promo_video.mp4
+    └── ...
+```
+
+> 注意：`files` 欄位中的檔案名稱路徑相對於選取的**根資料夾**，若放在子資料夾中需加上路徑，例如 `"media/morning_01.jpg"`。
+
+---
+
+## 👤 作者
+
+本系統由 **Claude**（Anthropic 開發的 AI 助理）依據使用者需求規格設計與撰寫。
+
+- 系統架構設計、程式碼撰寫、文件撰寫：Claude (claude.ai)
+- 需求定義與測試：使用者
+
+> *This project was fully designed and implemented by Claude, an AI assistant made by Anthropic, based on user-provided specifications.*
+
+---
+
+## 📝 版本紀錄
+
+| 版本 | 說明 |
+|---|---|
+| v1.0 | 初始版本：播放引擎、排程系統、跑馬燈、時鐘、Polling 熱重載 |
+| v1.1 | 新增 6 種版面佈局選擇（v1/v2/v3/h1/h2/h3），支援啟動 UI 選擇與 JSON 覆蓋 |
+
+---
+
+*數位看板系統 · 本地端純前端架構 · 無需伺服器 · 無需網路連線*

@@ -1,0 +1,99 @@
+{
+  "version": "1.0",
+  "layout": {
+    "preset": "h3",
+    "columns": 1,
+    "rows": 3
+  },
+  "styles": {
+    "marquee": {
+      "text": "LocalDSS 範例程式 · 由 LocalDSS 團隊提供",
+      "fontSize": "36px",
+      "color": "white",
+      "top": "90vh",
+      "height": "55px",
+      "speed": "35s"
+    },
+    "clock": {
+      "fontSize": "28px",
+      "color": "#ffdd00",
+      "top": "16px",
+      "right": "24px"
+    }
+  },
+  "schedules": [
+    {
+      "programId": "morning-loop",
+      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+      "startTime": "08:00",
+      "endTime": "12:00",
+      "marquee": "上午測試訊息 · 祝您有個美好的一天！",
+      "slots": [
+        {
+          "id": "slot1",
+          "duration": 5000,
+          "files": ["pic1.jpg", "pic2.png"]
+        },
+        {
+          "id": "slot2",
+          "duration": 8000,
+          "files": ["vid1.mp4"]
+        },
+        {
+          "id": "slot3",
+          "duration": 5000,
+          "files": ["pic3.jpg", "pic4.webp"]
+        }
+      ]
+    },
+    {
+      "programId": "afternoon-loop",
+      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+      "startTime": "12:00",
+      "endTime": "18:00",
+      "marquee": "下午測試訊息! · 工作再忙也要記得休息一下喔！",
+      "slots": [
+        {
+          "id": "slot1",
+          "duration": 6000,
+          "files": ["pic2.png", "pic3.jpg"]
+        },
+        {
+          "id": "slot2",
+          "duration": 10000,
+          "files": ["vid1.mp4", "vid2.webm"]
+        },
+        {
+          "id": "slot3",
+          "duration": 6000,
+          "files": ["pic4.webp", "pic1.jpg"]
+        }
+      ]
+    },
+    {
+      "programId": "weekend-loop",
+      "days": ["Saturday", "Sunday"],
+      "startTime": "09:00",
+      "endTime": "20:00",
+      "layout": { "preset": "h3" },
+      "marquee": "週末愉快！假日特別活動全天開放 · 詳情請洽服務台",
+      "slots": [
+        {
+          "id": "slot1",
+          "duration": 5000,
+          "files": ["pic1.jpg", "pic2.png", "pic3.jpg"]
+        },
+        {
+          "id": "slot2",
+          "duration": 5000,
+          "files": ["pic4.webp", "pic1.jpg"]
+        },
+        {
+          "id": "slot3",
+          "duration": 8000,
+          "files": ["vid1.mp4"]
+        }
+      ]
+    }
+  ]
+}
