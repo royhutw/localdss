@@ -252,21 +252,8 @@
       border-left: 1px solid rgba(255,255,255,0.04);
     }
 
-    /* Two stacked media layers per slot for crossfade — no flash on swap */
-    .media-layer {
-      position: absolute; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      transition: opacity 0.45s ease;
-      will-change: opacity;
-    }
-
-    .media-layer.behind  { z-index: 1; opacity: 1; }
-    .media-layer.front   { z-index: 2; opacity: 0; }
-    .media-layer.visible { opacity: 1; }
-    .media-layer.hidden  { opacity: 0; }
-
-    /* Media elements inside layers */
-    .media-layer img, .media-layer video {
+    /* Media elements inside slots */
+    .slot img, .slot video {
       max-width: 100%; max-height: 100%;
       object-fit: contain;
       display: block;
@@ -381,6 +368,17 @@
 
     #transition-overlay.active { opacity: 1; }
 
+    /* =============================================
+       Media fade-in
+    ============================================= */
+    @keyframes media-fade {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    .slot img, .slot video {
+      animation: media-fade 0.4s ease;
+    }
   </style>
 </head>
 <body>
@@ -759,11 +757,8 @@ function buildGrid(slots) {
     if (isHorizontal && i > 0) div.classList.add('slot-divider-h');
 
     if (slotCfg?.gridArea) div.style.gridArea = slotCfg.gridArea;
-    div.innerHTML = `
-      <div class="slot-msg"><div class="icon">⏳</div><div>載入中...</div></div>
-      <div class="media-layer behind" data-layer="A"></div>
-      <div class="media-layer front"  data-layer="B"></div>
-      <div class="oversize-badge">⚠ 超出尺寸</div>`;
+    div.innerHTML = `<div class="slot-msg"><div class="icon">⏳</div><div>載入中...</div></div>
+                     <div class="oversize-badge">⚠ 超出尺寸</div>`;
     gridContainer.appendChild(div);
   }
 
@@ -776,244 +771,104 @@ function buildGrid(slots) {
 }
 
 // ══════════════════════════════════════════════════════════
-//  SLOT MANAGER  —  preload + dual-layer crossfade
-//
-//  Strategy:
-//  • Two DOM layers (A / B) sit stacked inside each slot.
-//  • The "active" layer shows the current media (opacity:1).
-//  • While the current media is displaying, the "inactive"
-//    layer silently preloads the *next* media via img.decode().
-//  • On swap: inactive layer becomes visible first, then the
-//    old layer fades out — zero black-frame gap.
-//  • BlobURLs are revoked only after the layer is fully hidden.
+//  SLOT MANAGER
 // ══════════════════════════════════════════════════════════
 class SlotManager {
   constructor(slotConfig, index) {
-    this.config    = slotConfig;
-    this.index     = index;
-    this.files     = slotConfig.files || [];
-    this.duration  = slotConfig.duration || 5000;
-    this.cursor    = 0;           // currently displayed index
-    this.timer     = null;
-    this.destroyed = false;
-
-    this.el        = document.getElementById(`slot-${index}`);
-    this.layerA    = this.el.querySelector('[data-layer="A"]');
-    this.layerB    = this.el.querySelector('[data-layer="B"]');
-
-    // activeLayer   = layer currently shown on screen
-    // inactiveLayer = layer being preloaded off-screen
-    this.activeLayer   = this.layerA;
-    this.inactiveLayer = this.layerB;
-
-    // BlobURL tracking per layer for clean revocation
-    this.blobA = null;
-    this.blobB = null;
+    this.config   = slotConfig;
+    this.index    = index;
+    this.files    = slotConfig.files || [];
+    this.duration = slotConfig.duration || 5000;
+    this.cursor   = 0;
+    this.timer    = null;
+    this.blobUrls = [];  // Track for revoke
+    this.el       = document.getElementById(`slot-${index}`);
   }
 
-  // ── Public entry point ───────────────────────────────────
   async start() {
     if (!this.files.length) {
-      this.el.querySelector('.slot-msg').innerHTML =
-        '<div class="icon">📭</div><div>無媒體檔案</div>';
+      this.el.querySelector('.slot-msg').innerHTML = '<div class="icon">📭</div><div>無媒體檔案</div>';
+      return;
+    }
+    await this.showCurrent();
+    this.scheduleNext();
+  }
+
+  async showCurrent() {
+    const filename = this.files[this.cursor];
+    const ext      = filename.split('.').pop().toLowerCase();
+    const isVideo  = ['mp4','webm','ogg'].includes(ext);
+
+    let fileHandle, file, blobUrl;
+    try {
+      fileHandle = await dirHandle.getFileHandle(filename);
+      file       = await fileHandle.getFile();
+      blobUrl    = URL.createObjectURL(file);
+      this.blobUrls.push(blobUrl);
+    } catch (e) {
+      console.error(`無法讀取檔案: ${filename}`, e);
+      this.advanceCursor();
       return;
     }
 
-    // Load first frame into active layer immediately (no crossfade on first show)
-    await this._loadIntoLayer(this.activeLayer, this.files[this.cursor], true);
-    this._hideMsg();
-
-    // Preload the next frame into the inactive layer in the background
-    this._preloadNext();
-
-    // Start the rotation timer
-    this._scheduleNext();
-  }
-
-  // ── Preload next frame into the inactive layer ───────────
-  _preloadNext() {
-    if (this.files.length <= 1) return; // nothing to preload
-
-    const nextIndex = (this.cursor + 1) % this.files.length;
-    const nextFile  = this.files[nextIndex];
-
-    // Fire-and-forget — errors are silently ignored; swap will retry
-    this._loadIntoLayer(this.inactiveLayer, nextFile, false).catch(() => {});
-  }
-
-  // ── Core: load a file into a layer ───────────────────────
-  // visible=true  → show it immediately (used for first frame)
-  // visible=false → preload silently at opacity:0
-  async _loadIntoLayer(layer, filename, visible) {
-    if (this.destroyed) return;
-
-    const ext     = filename.split('.').pop().toLowerCase();
-    const isVideo = ['mp4', 'webm', 'ogg'].includes(ext);
-
-    // Fetch file & make blob URL
-    let blobUrl;
-    try {
-      const fh  = await dirHandle.getFileHandle(filename);
-      const f   = await fh.getFile();
-      blobUrl   = URL.createObjectURL(f);
-    } catch (e) {
-      console.warn(`[Slot ${this.index}] 無法讀取: ${filename}`, e);
-      throw e;
+    // Clear previous media
+    const prev = this.el.querySelector('img, video');
+    if (prev) {
+      prev.remove();
+      // Revoke old URLs (keep last 2 for safety)
+      while (this.blobUrls.length > 4) {
+        URL.revokeObjectURL(this.blobUrls.shift());
+      }
     }
+    // Clear loading message
+    const msg = this.el.querySelector('.slot-msg');
+    if (msg) msg.style.display = 'none';
 
     if (isVideo) {
       const vid       = document.createElement('video');
       vid.src         = blobUrl;
       vid.muted       = true;
-      vid.autoplay    = visible;
+      vid.autoplay    = true;
       vid.loop        = true;
       vid.playsInline = true;
-
-      // Replace layer content
-      layer.innerHTML = '';
-      layer.appendChild(vid);
-      this._trackBlob(layer, blobUrl);
-
-      if (visible) {
-        vid.play().catch(() => {});
-        this.checkOversize(vid.videoWidth || 0, vid.videoHeight || 0);
-      }
-
+      vid.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+      this.el.appendChild(vid);
+      vid.play().catch(() => {});
+      this.checkOversize(vid.videoWidth || 0, vid.videoHeight || 0);
     } else {
-      const img = document.createElement('img');
-      img.src   = blobUrl;
-      img.alt   = filename;
-
-      // Wait for the image to be fully decoded before touching the DOM
-      // This is the key fix: img.decode() resolves only when the browser
-      // has fully parsed & decoded the pixel data — no more black flash.
-      await img.decode().catch(() => {}); // graceful fallback on error
-
-      if (this.destroyed) {
-        URL.revokeObjectURL(blobUrl);
-        return;
-      }
-
-      layer.innerHTML = '';
-      layer.appendChild(img);
-      this._trackBlob(layer, blobUrl);
-
-      if (visible) this.checkOversize(img.naturalWidth, img.naturalHeight);
+      const img   = document.createElement('img');
+      img.src     = blobUrl;
+      img.alt     = filename;
+      img.onload  = () => this.checkOversize(img.naturalWidth, img.naturalHeight);
+      img.onerror = () => { img.remove(); };
+      this.el.appendChild(img);
     }
-
-    // Set visibility without transition for first-show
-    if (visible) {
-      layer.classList.add('visible');
-      layer.classList.remove('hidden', 'front');
-      layer.classList.add('behind');
-    }
-    // Invisible preload — layer stays at opacity:0, positioned above (front)
-    // until the crossfade swap is triggered
   }
 
-  // ── Swap layers with crossfade ───────────────────────────
-  async _swap() {
-    if (this.destroyed) return;
-
-    const incoming = this.inactiveLayer; // has preloaded content
-    const outgoing = this.activeLayer;
-
-    // If the incoming layer has no content (preload failed / single file),
-    // skip the swap and just reschedule
-    if (!incoming.firstChild) {
-      this._scheduleNext();
-      return;
-    }
-
-    // Play video if it was preloaded paused
-    const vid = incoming.querySelector('video');
-    if (vid) vid.play().catch(() => {});
-
-    // Check oversize for whatever just came in
-    const img2 = incoming.querySelector('img');
-    if (img2) this.checkOversize(img2.naturalWidth, img2.naturalHeight);
-
-    // Bring incoming to front, make it visible → CSS transition fires
-    incoming.classList.add('front', 'visible');
-    incoming.classList.remove('behind', 'hidden');
-
-    // Push outgoing behind
-    outgoing.classList.add('behind');
-    outgoing.classList.remove('front');
-
-    // After transition duration, hide outgoing and revoke its blob
-    setTimeout(() => {
-      if (this.destroyed) return;
-      outgoing.classList.remove('visible');
-      outgoing.classList.add('hidden');
-      this._revokeLayerBlob(outgoing);
-    }, 480); // slightly longer than CSS transition (450ms)
-
-    // Swap references
-    this.activeLayer   = incoming;
-    this.inactiveLayer = outgoing;
-  }
-
-  // ── Schedule the next rotation ───────────────────────────
-  _scheduleNext() {
-    this.timer = setTimeout(async () => {
-      if (this.destroyed) return;
-
-      // Advance cursor
-      this.cursor = (this.cursor + 1) % Math.max(this.files.length, 1);
-
-      // Swap to the preloaded frame
-      await this._swap();
-
-      // Immediately start preloading the *next* frame into the now-inactive layer
-      this._preloadNext();
-
-      // Schedule the one after that
-      this._scheduleNext();
-    }, this.duration);
-  }
-
-  // ── Oversize check ───────────────────────────────────────
   checkOversize(w, h) {
     const badge = this.el.querySelector('.oversize-badge');
     if (!badge) return;
-    badge.style.display =
-      (w > 0 && h > 0 && (w > this.el.clientWidth || h > this.el.clientHeight))
-        ? 'block' : 'none';
+    const cw = this.el.clientWidth;
+    const ch = this.el.clientHeight;
+    badge.style.display = (w > cw || h > ch) ? 'block' : 'none';
   }
 
-  // ── Blob URL tracking ────────────────────────────────────
-  _trackBlob(layer, url) {
-    if (layer === this.layerA) {
-      if (this.blobA) URL.revokeObjectURL(this.blobA);
-      this.blobA = url;
-    } else {
-      if (this.blobB) URL.revokeObjectURL(this.blobB);
-      this.blobB = url;
-    }
+  scheduleNext() {
+    this.timer = setTimeout(async () => {
+      this.advanceCursor();
+      try { await this.showCurrent(); } catch(e) { console.error(e); }
+      this.scheduleNext();
+    }, this.duration);
   }
 
-  _revokeLayerBlob(layer) {
-    if (layer === this.layerA && this.blobA) {
-      URL.revokeObjectURL(this.blobA);
-      this.blobA = null;
-    } else if (layer === this.layerB && this.blobB) {
-      URL.revokeObjectURL(this.blobB);
-      this.blobB = null;
-    }
-  }
-
-  // ── Helpers ──────────────────────────────────────────────
-  _hideMsg() {
-    const msg = this.el.querySelector('.slot-msg');
-    if (msg) msg.style.display = 'none';
+  advanceCursor() {
+    this.cursor = (this.cursor + 1) % Math.max(this.files.length, 1);
   }
 
   destroy() {
-    this.destroyed = true;
     clearTimeout(this.timer);
-    if (this.blobA) { URL.revokeObjectURL(this.blobA); this.blobA = null; }
-    if (this.blobB) { URL.revokeObjectURL(this.blobB); this.blobB = null; }
+    this.blobUrls.forEach(u => URL.revokeObjectURL(u));
+    this.blobUrls = [];
   }
 }
 
