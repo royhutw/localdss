@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>數位看板系統 v1.0</title>
+  <title>數位看板系統 v1.2</title>
   <style>
     /* =============================================
        CSS Variables & Reset
@@ -388,7 +388,8 @@
   <div class="launch-logo">
     <div class="icon">📺</div>
     <h1>數位看板</h1>
-    <div class="sub">Digital Signage System &nbsp;·&nbsp; v1.0</div>
+    <div class="sub">Digital Signage System &nbsp;·&nbsp; v1.2</div>
+    <div>Cache all media files</div>
   </div>
 
   <!-- Layout Picker -->
@@ -495,6 +496,7 @@ let slotManagers   = [];     // Array of SlotManager instances
 let pollInterval   = null;   // setInterval handle for config polling
 let clockInterval  = null;   // setInterval handle for clock
 let uiLayout       = 'v3';   // Layout chosen in launch screen UI
+let mediaCache     = new Map(); // filename -> { file, blobUrl }
 
 // Layout preset definitions
 // Each preset: { type: 'v'|'h', slots: number, gridCols, gridRows, dividerClass }
@@ -553,6 +555,7 @@ document.getElementById('btn-launch').addEventListener('click', async () => {
     // 2. Load & validate config
     setStep('step-json', 'active');
     config = await loadConfig();
+    await preloadMediaCache(config);
     setStep('step-json', 'done');
 
     // 3. Launch fullscreen + signage
@@ -583,6 +586,43 @@ async function loadConfig() {
   const obj        = JSON.parse(text);
   validateConfig(obj);
   return obj;
+}
+
+function collectMediaFiles(obj) {
+  const files = new Set();
+  for (const sched of obj?.schedules || []) {
+    for (const slot of sched.slots || []) {
+      for (const filename of slot.files || []) {
+        if (filename) files.add(filename);
+      }
+    }
+  }
+  return [...files];
+}
+
+async function preloadMediaCache(obj) {
+  const filenames = collectMediaFiles(obj);
+  const nextCache = new Map();
+
+  for (const filename of filenames) {
+    if (mediaCache.has(filename)) {
+      nextCache.set(filename, mediaCache.get(filename));
+      continue;
+    }
+
+    const fileHandle = await dirHandle.getFileHandle(filename);
+    const file       = await fileHandle.getFile();
+    const blobUrl    = URL.createObjectURL(file);
+    nextCache.set(filename, { file, blobUrl });
+  }
+
+  for (const [filename, entry] of mediaCache.entries()) {
+    if (!nextCache.has(filename)) {
+      URL.revokeObjectURL(entry.blobUrl);
+    }
+  }
+
+  mediaCache = nextCache;
 }
 
 function validateConfig(obj) {
@@ -781,7 +821,6 @@ class SlotManager {
     this.duration = slotConfig.duration || 5000;
     this.cursor   = 0;
     this.timer    = null;
-    this.blobUrls = [];  // Track for revoke
     this.el       = document.getElementById(`slot-${index}`);
   }
 
@@ -799,12 +838,17 @@ class SlotManager {
     const ext      = filename.split('.').pop().toLowerCase();
     const isVideo  = ['mp4','webm','ogg'].includes(ext);
 
-    let fileHandle, file, blobUrl;
+    let cached, blobUrl;
     try {
-      fileHandle = await dirHandle.getFileHandle(filename);
-      file       = await fileHandle.getFile();
-      blobUrl    = URL.createObjectURL(file);
-      this.blobUrls.push(blobUrl);
+      cached = mediaCache.get(filename);
+      if (!cached) {
+        const fileHandle = await dirHandle.getFileHandle(filename);
+        const file       = await fileHandle.getFile();
+        blobUrl          = URL.createObjectURL(file);
+        cached           = { file, blobUrl };
+        mediaCache.set(filename, cached);
+      }
+      blobUrl = cached.blobUrl;
     } catch (e) {
       console.error(`無法讀取檔案: ${filename}`, e);
       this.advanceCursor();
@@ -815,10 +859,6 @@ class SlotManager {
     const prev = this.el.querySelector('img, video');
     if (prev) {
       prev.remove();
-      // Revoke old URLs (keep last 2 for safety)
-      while (this.blobUrls.length > 4) {
-        URL.revokeObjectURL(this.blobUrls.shift());
-      }
     }
     // Clear loading message
     const msg = this.el.querySelector('.slot-msg');
@@ -867,8 +907,6 @@ class SlotManager {
 
   destroy() {
     clearTimeout(this.timer);
-    this.blobUrls.forEach(u => URL.revokeObjectURL(u));
-    this.blobUrls = [];
   }
 }
 
@@ -890,6 +928,7 @@ async function pollConfig() {
     if (file.lastModified !== configLastMod) {
       console.log('[Polling] Config changed — reloading...');
       config        = await loadConfig();
+      await preloadMediaCache(config);
       configLastMod = file.lastModified;
       activeProgram = null;  // Force re-evaluation
       await evaluateSchedule();
