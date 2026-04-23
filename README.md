@@ -1,6 +1,6 @@
 # 📺 本地端數位看板系統
 
-**Local Digital Signage System** · v1.0
+**Local Digital Signage System** · v1.2
 
 純前端、零依賴、無需伺服器，完全在瀏覽器中運行的數位看板解決方案。只需一個 `index.html` 與一個 `program.json`，即可在任何支援的瀏覽器上部署成全螢幕數位看板。
 
